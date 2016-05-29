@@ -1,0 +1,24 @@
+1. What is Relational Programming?
+    a. What is a relation?
+    b. Think of SQL
+
+2. What is miniKanren
+    a. Embedded DSL
+    b. Lets you write logic programs in your app!
+    c. Very small:
+        - fresh: Introduce new logic variables
+        - unify (==): Make two things the same/Are two things the same?
+        - conde: Satisfy several goals
+    d. (run* (q)
+        (appendo '(1 2 3) '(4 5 6) q))
+
+    e. (run* (q)
+        (appendo '(1 2 3) q '(4 5 6)))
+
+    f. (run* (q)
+        (fresh (x y)
+         (appendo x y '(1 2 3 4 5 6))
+         (== q `(,x . ,y))))
+
+3. Why this is useful!
+
