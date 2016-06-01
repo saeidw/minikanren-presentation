@@ -81,7 +81,7 @@ class Substitution {
             }
         }
 
-        return false;
+        return $u;
     }
 
     public function extend(Mapping $mapping) {
@@ -120,6 +120,10 @@ class State {
         $this->counter = $counter;
     }
 
+    public static function emptyState() {
+        return new State(new Substitution(), 0);
+    }
+
     public function getSubstitution() {
         return $this->substitution;
     }
@@ -137,7 +141,8 @@ class Goal {
     }
 
     public function execute(State $state) {
-        return $this->fn($state);
+        $fn = $this->fn;
+        return $fn($state);
     }
 }
 
@@ -201,41 +206,45 @@ function callFresh(callable $fn) {
     );
 }
 
-function mplus($S1, $S2) {
-    if (!isset($S1)) {
+function mplus(array $S1, array $S2) {
+    if (empty($S1)) {
         return $S2;
     }
 
-    if (is_callable($S1)) {
-        return function () use ($S1, $S2) {
-            return mplus($S2, $S1());
-        };
-    }
-
     $first = \array_shift($S1);
-    return \array_merge($first, mplus($S2, $S1));
+    $rest = $S1;
+
+    return \array_merge(array($first), mplus($S2, $rest));
 }
 
-function bind($S, Goal $g) {
-    if (!isset($S)) {
+function bind(Goal $g, array $S) {
+    if (empty($S)) {
         return mzero();
     }
 
-    if (is_callable($S)) {
-        return function () use ($S, $g) {
-            return bind($S(), $g);
-        };
-    }
-
     $first = \array_shift($S);
-    return \array_merge($first, bind($S, $g));
+    $rest = $S;
+
+    return mplus($g->execute($first), bind($g, $rest));
 }
 
-$s = (new Substitution())
-    ->extend(new Mapping(new Variable(0), new Variable(1)))
-    ->extend(new Mapping(new Variable(1), new Variable(2)))
-    ->extend(new Mapping(new Variable(2), new Pair(new Variable(1), 5)));
+function disj(Goal $g1, Goal $g2) {
+    return new Goal(function (State $state) use ($g1, $g2) {
+        return mplus($g1->execute($state), $g2->execute($state));
+    });
+}
 
-$r = $s->walk(new Variable(0));
+function conj(Goal $g1, Goal $g2) {
+    return new Goal(function (State $state) use ($g1, $g2) {
+        return bind($g1->execute($state), $g2);
+    });
+}
+
+$S1 = array(1, 2, 3, 4, 5);
+$S2 = array(6, 7, 8, 9, 10);
+
+$s = State::emptyState();
+$x = new Variable(0);
+$g = eq($x, 5);
+$r = bind($g, array($s));
 var_dump($r);
-
