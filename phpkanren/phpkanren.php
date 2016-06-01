@@ -109,6 +109,27 @@ class Substitution {
 
         return false;
     }
+
+    private function reifyName($number) {
+        return "_.$number";
+    }
+
+    public function walkStar($v) {
+        $newV = $this->walk($v);
+        if (isVariable($newV)) {
+            return $newV;
+        }
+
+        if (isPair($newV)) {
+            return new Pair(
+                $this->walkStar($newV->getFirst()),
+                $this->walkStar($newV->getSecond())
+            );
+        }
+
+        return $newV;
+    }
+
 }
 
 class State {
@@ -198,34 +219,47 @@ function callFresh(callable $fn) {
             $c = $state->getCounter();
 
             $var = new Variable($c);
+            $freshGoal = $fn($var);
             $newState = new State($s, ($c + 1));
-            $freshFn = $fn($c);
 
-            return $freshFn($newState);
+            return $freshGoal->execute($newState);
         }
     );
 }
 
-function mplus(array $S1, array $S2) {
+function mplus($S1, $S2) {
     if (empty($S1)) {
         return $S2;
     }
 
+    if (is_callable($S1)) {
+        return function () use ($S1, $S2) {
+            return mplus($S2, $S1());
+        };
+    }
+
     $first = \array_shift($S1);
     $rest = $S1;
+    $result = mplus($S2, $rest);
 
-    return \array_merge(array($first), mplus($S2, $rest));
+    return array($first, $result);
 }
 
-function bind(Goal $g, array $S) {
+function bind(array $S, Goal $g) {
     if (empty($S)) {
         return mzero();
+    }
+
+    if (is_callable($S)) {
+        return function () use ($S, $g) {
+            return bind($S(), $g);
+        };
     }
 
     $first = \array_shift($S);
     $rest = $S;
 
-    return mplus($g->execute($first), bind($g, $rest));
+    return mplus($g->execute($first), bind($rest, $g));
 }
 
 function disj(Goal $g1, Goal $g2) {
@@ -240,11 +274,65 @@ function conj(Goal $g1, Goal $g2) {
     });
 }
 
-$S1 = array(1, 2, 3, 4, 5);
-$S2 = array(6, 7, 8, 9, 10);
+function pull($S) {
+    if (is_callable($S)) {
+        return pull($S());
+    }
 
-$s = State::emptyState();
-$x = new Variable(0);
-$g = eq($x, 5);
-$r = bind($g, array($s));
+    return $S;
+}
+
+function takeAll($S) {
+    $S1 = pull($S);
+    if (empty($S1)) {
+        return array();
+    }
+
+    $first = array_shift($S1);
+    $rest = $S1;
+
+    $result = takeAll($rest);
+    if (empty($result)) {
+        return array($first);
+    }
+
+    return array($first, $result);
+}
+
+function take($n, $S) {
+    if ($n == 0) {
+        return array();
+    }
+
+    $S1 = pull($S);
+    if (empty($S1)) {
+        return array();
+    }
+
+    $first = array_shift($S1);
+    $rest = $S1;
+
+    $result = take($n - 1, $rest);
+    if (empty($result)) {
+        return array($first);
+    }
+
+    return array($first, $result);
+}
+
+function fives ($x) {
+    return disj(
+        eq($x, 5),
+        new Goal(
+            function (State $state) use ($x) {
+                return function () use ($x, $state) {
+                    return $fives($x);
+                };
+            }
+        )
+    );
+}
+
+$r = take(2, callFresh('fives')->execute(State::emptyState()));
 var_dump($r);
+
